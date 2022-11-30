@@ -939,6 +939,21 @@ namespace CitizenFX.Core
 			return _GetAltPropVariationData(ped, propIndex);
 		}
 
+		private static PedComponentData _GetShopPedComponent(uint componentHash)
+		{
+			UnsafePedComponentData data = new UnsafePedComponentData();
+			unsafe
+			{
+				Function.Call((Hash)0x74C0E2A57EC66760, componentHash, new IntPtr(&data).ToInt64());
+			}
+			return data.GetData();
+		}
+
+
+		public static PedComponentData[] GetShopPedComponent(uint componentHash)
+		{
+			return _GetShopPedComponent(componentHash);
+		}
 
 		[StructLayout(LayoutKind.Explicit, Size = 0x28)]
 		[SecuritySafeCritical]

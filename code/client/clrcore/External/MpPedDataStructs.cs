@@ -185,4 +185,67 @@ namespace CitizenFX.Core
 		}
 	}
 
+	[StructLayout(LayoutKind.Explicit, Size = 0x88)]
+	[SecuritySafeCritical]
+	internal unsafe struct UnsafePedComponentData
+	    {
+        [FieldOffset(0x00)] private int lockHash;
+
+        [FieldOffset(0x08)] private int hash; // componentHash
+
+        [FieldOffset(0x10)] private int locate;
+
+        [FieldOffset(0x18)] private int drawable;
+
+        [FieldOffset(0x20)] private int texture;
+
+        [FieldOffset(0x28)] private int f_5; // price
+
+        [FieldOffset(0x30)] private int componentType;
+
+        [FieldOffset(0x38)] private int f_7;
+
+        [FieldOffset(0x40)] private int f_8;
+
+        [FieldOffset(0x48)] private unsafe fixed sbyte gxt[0x40];
+
+		[FieldOffset(0x88)] private int f_10;
+
+		public PedComponentData GetData()
+		{
+			return new PedComponentData(lockHash, hash, locate, drawable, texture, f_5, componentType, f_7, f_8, gxt, f_10);
+		}
+
+	}
+
+	public struct PedComponentData
+	{
+		public int LockHash;
+		public int Hash;
+		public int Locate;
+		public int Drawable;
+		public int Texture;
+		public int Price;
+		public int ComponentType;
+		public int Unknown7;
+		public int Unknown8;
+		public string GXT;
+		public int Unknown10;
+
+		public PedComponentData(int lockHash, int hash, int locate, int drawable, int texture, int price, int componentType, int unknown7, int unknown8, sbyte* gxt, int unknown10)
+		{
+			LockHash = lockHash;
+			Hash = hash;
+			Locate = locate;
+			Drawable = drawable;
+			Texture = texture;
+			Price = price;
+			ComponentType = componentType;
+			Unknown7 = unknown7;
+			Unknown8 = unknown8;
+			GXT = gxt;
+			Unknown10 = unknown10;
+		}
+	}
+
 }
