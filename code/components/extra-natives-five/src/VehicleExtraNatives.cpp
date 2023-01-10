@@ -32,6 +32,8 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Gaming.Input.h>
 
+#include "DeferredInitializer.h"
+
 using namespace winrt::Windows::Gaming::Input;
 
 struct PatternPair
@@ -279,6 +281,8 @@ static bool* g_trainsForceDoorsOpen;
 static int TrainDoorCountOffset;
 static int TrainDoorArrayPointerOffset;
 
+static int VehicleRepairMethodVtableOffset;
+
 static std::unordered_set<fwEntity*> g_deletionTraces;
 static std::unordered_set<void*> g_deletionTraces2;
 
@@ -460,14 +464,15 @@ static HookFunction initFunction([]()
 		WheelSurfaceMaterialOffset = *hook::get_pattern<uint32_t>("48 8B 4A 10 0F 28 CF F3 0F 59 05", -4);
 		WheelHealthOffset = *hook::get_pattern<uint32_t>("75 24 F3 0F 10 ? ? ? 00 00 F3 0F", 6);
 		LightMultiplierGetOffset = *hook::get_pattern<uint32_t>("00 00 48 8B CE F3 0F 59 ? ? ? 00 00 F3 41", 9);
+		VehicleRepairMethodVtableOffset = *hook::get_pattern<uint32_t>("C1 E8 19 A8 01 74 ? 48 8B 81", -14);
 	}
 
 	if (xbr::IsGameBuildOrGreater<2372>())
 	{
-		auto location = hook::get_pattern<char>("49 3B F6 75 ? F3 41 0F 10 0E 41 B1 01");
+		auto location = hook::get_pattern<char>("89 87 ? ? ? ? 48 3B F5 74 2C 48 8B 6D 00 48 8B 0E 48");
 
-		FuelLevelOffset = *(uint32_t*)(location + 64);
-		OilLevelOffset = *(uint32_t*)(location + 76);
+		FuelLevelOffset = *(uint32_t*)(location - 16);
+		OilLevelOffset = *(uint32_t*)(location - 4);
 	}
 	else
 	{
@@ -543,10 +548,12 @@ static HookFunction initFunction([]()
 
 	{
 		char* location;
-		if (xbr::IsGameBuildOrGreater<2060>()) {
+		if (xbr::IsGameBuildOrGreater<2060>())
+		{
 			location = hook::get_pattern<char>("0F 2F ? ? ? 00 00 0F 97 C0 EB ? D1");
 		}
-		else {
+		else
+		{
 			location = hook::get_pattern<char>("0F 2F ? ? ? 00 00 0F 97 C0 EB DA");
 		}
 		WheelSteeringAngleOffset = (*(uint32_t*)(location + 3));
@@ -1292,7 +1299,7 @@ static HookFunction initFunction([]()
 			jne("skiprepair");
 			pop(rax);
 			sub(rsp, 0x28);
-			AppendInstr(jitasm::InstrID::I_CALL, 0xFF, 0, jitasm::Imm8(2), qword_ptr[rax + (xbr::IsGameBuildOrGreater<2189>() ? 0x5D8 : 0x5D0)]);
+			AppendInstr(jitasm::InstrID::I_CALL, 0xFF, 0, jitasm::Imm8(2), qword_ptr[rax + VehicleRepairMethodVtableOffset]);
 			add(rsp, 0x28);
 			ret();
 			L("skiprepair");
@@ -1740,30 +1747,34 @@ static HookFunction inputFunction([]()
 		return;
 	}
 
-	HMODULE hLib = LoadLibraryW(L"Windows.Gaming.Input.dll");
+	auto getStateRef = hook::get_address<void**>(hook::get_call(hook::get_pattern<char>("75 13 48 8D 54 24 20 8B CF E8", 9)) + 2);
+	auto setStateRef = hook::get_address<void**>(hook::get_call(hook::get_pattern<char>("8B CF 89 73 42 89 74 24 40 E8", 9)) + 2);
 
-	if (!hLib)
+	static auto initializer = DeferredInitializer::Create([getStateRef, setStateRef]()
 	{
-		return;
-	}
+		HMODULE hLib = LoadLibraryW(L"Windows.Gaming.Input.dll");
 
-	addedRevoker = Gamepad::GamepadAdded(winrt::auto_revoke, OnGamepadAdded);
-	removedRevoker = Gamepad::GamepadRemoved(winrt::auto_revoke, OnGamepadRemoved);
+		if (!hLib)
+		{
+			return;
+		}
 
-	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)hLib, &hLib))
-	{
-		trace("Failed to pin WGI DLL.\n");
-	}
+		addedRevoker = Gamepad::GamepadAdded(winrt::auto_revoke, OnGamepadAdded);
+		removedRevoker = Gamepad::GamepadRemoved(winrt::auto_revoke, OnGamepadRemoved);
 
-	{
-		auto getStateRef = hook::get_address<void**>(hook::get_call(hook::get_pattern<char>("75 13 48 8D 54 24 20 8B CF E8", 9)) + 2);
-		g_origXInputGetState = (decltype(g_origXInputGetState))*getStateRef;
-		hook::put(getStateRef, XInputGetStateHook);
-	}
+		if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)hLib, &hLib))
+		{
+			trace("Failed to pin WGI DLL.\n");
+		}
 
-	{
-		auto setStateRef = hook::get_address<void**>(hook::get_call(hook::get_pattern<char>("8B CF 89 73 42 89 74 24 40 E8", 9)) + 2);
-		g_origXInputSetState = (decltype(g_origXInputSetState))*setStateRef;
-		hook::put(setStateRef, XInputSetStateHook);
-	}
+		{
+			g_origXInputGetState = (decltype(g_origXInputGetState))*getStateRef;
+			hook::put(getStateRef, XInputGetStateHook);
+		}
+
+		{
+			g_origXInputSetState = (decltype(g_origXInputSetState))*setStateRef;
+			hook::put(setStateRef, XInputSetStateHook);
+		}
+	});
 });
